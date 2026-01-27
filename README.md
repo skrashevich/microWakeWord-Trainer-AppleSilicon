@@ -16,7 +16,7 @@ You can either:
 2. Or run the **training script directly** (TTS-only or with pre-existing samples)
 
 ---
-> **Note:** The script will automatically install **ffmpeg** and **wget** via Homebrew
+> **Note:** The script will automatically install **python3.11**, **ffmpeg** and **wget** via Homebrew
 if they are missing. Homebrew itself must already be installed:
 https://brew.sh/
 
