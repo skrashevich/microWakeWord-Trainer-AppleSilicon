@@ -13,7 +13,9 @@ from fastapi.staticfiles import StaticFiles
 ROOT_DIR = Path(__file__).resolve().parent
 STATIC_DIR = ROOT_DIR / "static"
 PERSONAL_DIR = ROOT_DIR / "personal_samples"
-TRAIN_SCRIPT = os.environ.get("TRAIN_SCRIPT", str(ROOT_DIR / "train_microwakeword_macos.sh"))
+TRAIN_SCRIPT = os.environ.get(
+    "TRAIN_SCRIPT", str(ROOT_DIR / "train_microwakeword_macos.sh")
+)
 
 TAKES_PER_SPEAKER_DEFAULT = int(os.environ.get("REC_TAKES_PER_SPEAKER", "10"))
 SPEAKERS_TOTAL_DEFAULT = int(os.environ.get("REC_SPEAKERS_TOTAL", "1"))
@@ -26,9 +28,39 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 _RU_TRANSLIT = {
-    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"yo","ж":"zh","з":"z","и":"i","й":"y",
-    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
-    "х":"kh","ц":"ts","ч":"ch","ш":"sh","щ":"shch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "е": "e",
+    "ё": "yo",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "y",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "kh",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "shch",
+    "ъ": "",
+    "ы": "y",
+    "ь": "",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
 }
 
 
@@ -60,15 +92,12 @@ STATE: Dict[str, Any] = {
     "raw_phrase": None,
     "safe_word": None,
     "lang": None,
-
     # multi-speaker
     "speakers_total": SPEAKERS_TOTAL_DEFAULT,
     "takes_per_speaker": TAKES_PER_SPEAKER_DEFAULT,
-
     # recording progress
-    "takes_received": 0,   # total across all speakers
-    "takes": [],           # list of saved filenames
-
+    "takes_received": 0,  # total across all speakers
+    "takes": [],  # list of saved filenames
     "training": {
         "running": False,
         "exit_code": None,
@@ -101,7 +130,16 @@ def _append_train_log(line: str):
 
 
 def _run_training_background(safe_word: str, raw_phrase: str, lang: str):
-    cmd = ["bash", TRAIN_SCRIPT, "--phrase", raw_phrase, "--id", safe_word, "--lang", lang]
+    cmd = [
+        "bash",
+        TRAIN_SCRIPT,
+        "--phrase",
+        raw_phrase,
+        "--id",
+        safe_word,
+        "--lang",
+        lang,
+    ]
 
     with STATE_LOCK:
         STATE["training"]["running"] = True
@@ -162,15 +200,21 @@ def index():
 def start_session(payload: Dict[str, Any]):
     raw = (payload.get("phrase") or "").strip()
     if not raw:
-        return JSONResponse({"ok": False, "error": "phrase is required"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "phrase is required"}, status_code=400
+        )
 
     safe = safe_name(raw)
 
     speakers_total = int(payload.get("speakers_total") or SPEAKERS_TOTAL_DEFAULT)
-    takes_per_speaker = int(payload.get("takes_per_speaker") or TAKES_PER_SPEAKER_DEFAULT)
+    takes_per_speaker = int(
+        payload.get("takes_per_speaker") or TAKES_PER_SPEAKER_DEFAULT
+    )
     lang = (payload.get("lang") or "auto").strip().lower()
     if lang not in {"auto", "en", "ru"}:
-        return JSONResponse({"ok": False, "error": "lang must be one of: auto, en, ru"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "lang must be one of: auto, en, ru"}, status_code=400
+        )
     if lang == "auto":
         lang = detect_language(raw)
 
@@ -188,7 +232,7 @@ def start_session(payload: Dict[str, Any]):
         # do not interrupt training if running
 
     # wipe recordings whenever a new session starts
-    _reset_personal_samples_dir()
+    # _reset_personal_samples_dir()
 
     return {
         "ok": True,
@@ -229,13 +273,22 @@ async def upload_take(
         takes_per_speaker = int(STATE["takes_per_speaker"])
 
     if not safe_word:
-        return JSONResponse({"ok": False, "error": "No active session. Call /api/start_session first."}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "No active session. Call /api/start_session first."},
+            status_code=400,
+        )
 
     if speaker_index < 1 or speaker_index > speakers_total:
-        return JSONResponse({"ok": False, "error": f"speaker_index must be 1..{speakers_total}"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": f"speaker_index must be 1..{speakers_total}"},
+            status_code=400,
+        )
 
     if take_index < 1 or take_index > takes_per_speaker:
-        return JSONResponse({"ok": False, "error": f"take_index must be 1..{takes_per_speaker}"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": f"take_index must be 1..{takes_per_speaker}"},
+            status_code=400,
+        )
 
     PERSONAL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -245,7 +298,9 @@ async def upload_take(
 
     data = await file.read()
     if not data or len(data) < 44:
-        return JSONResponse({"ok": False, "error": "Empty/invalid file"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "Empty/invalid file"}, status_code=400
+        )
 
     out_path.write_bytes(data)
 
@@ -269,22 +324,37 @@ def train_now():
     takes_total = speakers_total * takes_per_speaker
 
     if training_running:
-        return JSONResponse({"ok": False, "error": "Training already running"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "Training already running"}, status_code=400
+        )
 
     if not safe_word:
-        return JSONResponse({"ok": False, "error": "No active session"}, status_code=400)
+        return JSONResponse(
+            {"ok": False, "error": "No active session"}, status_code=400
+        )
 
     if takes_received < max(1, min(3, takes_total)):
-        return JSONResponse({"ok": False, "error": f"Not enough takes yet ({takes_received}/{takes_total})."}, status_code=400)
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": f"Not enough takes yet ({takes_received}/{takes_total}).",
+            },
+            status_code=400,
+        )
 
     if not Path(TRAIN_SCRIPT).exists():
-        return JSONResponse({"ok": False, "error": f"TRAIN_SCRIPT not found: {TRAIN_SCRIPT}"}, status_code=500)
+        return JSONResponse(
+            {"ok": False, "error": f"TRAIN_SCRIPT not found: {TRAIN_SCRIPT}"},
+            status_code=500,
+        )
 
     with STATE_LOCK:
         raw_phrase = STATE.get("raw_phrase") or safe_word
         lang = STATE.get("lang") or detect_language(raw_phrase)
 
-    t = threading.Thread(target=_run_training_background, args=(safe_word, raw_phrase, lang), daemon=True)
+    t = threading.Thread(
+        target=_run_training_background, args=(safe_word, raw_phrase, lang), daemon=True
+    )
     t.start()
 
     return {"ok": True, "started": True, "safe_word": safe_word}
