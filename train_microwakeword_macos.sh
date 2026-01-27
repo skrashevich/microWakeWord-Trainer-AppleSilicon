@@ -5,23 +5,42 @@
 #   ./train_microwakeword_macos.sh "hey_tater" 50000 100 \
 #       --piper-model /path/to/voice1.onnx --piper-model /path/to/voice2.pt
 #
-# If no --piper-model is given, we auto-download a default .pt voice.
+# Or (recommended, explicit):
+#   ./train_microwakeword_macos.sh --phrase "привет дом" --lang ru --id privet_dom \
+#       --piper-model /path/to/ru_voice.onnx
+#
+# If no --piper-model is given, we auto-download a default voice for the language.
 
 set -euo pipefail
 
-TARGET_WORD="${1:-hey_tater}"
-MAX_TTS_SAMPLES="${2:-50000}"
-BATCH_SIZE="${3:-100}"
-[[ $# -ge 3 ]] && shift 3 || shift $#
+TARGET_PHRASE=""
+MAX_TTS_SAMPLES="50000"
+BATCH_SIZE="100"
+LANG="auto"
+SAFE_ID=""
+
+if [[ $# -gt 0 && "$1" != --* ]]; then
+  TARGET_PHRASE="$1"; shift
+  if [[ $# -gt 0 && "$1" =~ ^[0-9]+$ ]]; then MAX_TTS_SAMPLES="$1"; shift; fi
+  if [[ $# -gt 0 && "$1" =~ ^[0-9]+$ ]]; then BATCH_SIZE="$1"; shift; fi
+fi
 
 # Collect any --piper-model flags (repeatable)
 PIPER_MODELS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --phrase) TARGET_PHRASE="$2"; shift 2 ;;
+    --id) SAFE_ID="$2"; shift 2 ;;
+    --lang) LANG="$2"; shift 2 ;;
+    --max-samples) MAX_TTS_SAMPLES="$2"; shift 2 ;;
+    --batch-size) BATCH_SIZE="$2"; shift 2 ;;
     --piper-model) PIPER_MODELS+=("$2"); shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
+
+TARGET_PHRASE="${TARGET_PHRASE:-hey_tater}"
+LANG="$(echo "$LANG" | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "❌ This script is intended for macOS (Apple Silicon)."; exit 1
@@ -183,7 +202,7 @@ export DATASETS_AUDIO_BACKEND=torch
 # microWakeWord source (editable)
 if [[ ! -d "micro-wake-word" ]]; then
   echo "⬇️ Cloning microWakeWord…"
-  git clone https://github.com/TaterTotterson/micro-wake-word.git >/dev/null
+  git clone https://github.com/skrashevich/micro-wake-word.git >/dev/null
 else
   echo "🔁 Updating microWakeWord…"
   (cd micro-wake-word && git pull --ff-only origin main || true)
@@ -203,20 +222,83 @@ if not any(d.device_type == "GPU" for d in devs):
     print("⚠️  No GPU logical device detected. Will run on CPU.")
 PY
 
+# ── decide language + safe id ─────────────────────────────────────────────────
+TARGET_LANG="$LANG"
+if [[ "$TARGET_LANG" == "auto" ]]; then
+  TARGET_LANG="$("$PY" - <<'PY' "$TARGET_PHRASE"
+import re, sys
+phrase = sys.argv[1] if len(sys.argv) > 1 else ""
+print("ru" if re.search(r"[А-Яа-яЁё]", phrase) else "en")
+PY
+)"
+fi
+case "$TARGET_LANG" in
+  en|ru) : ;;
+  *) echo "❌ Unsupported --lang: $TARGET_LANG (use en|ru|auto)"; exit 1 ;;
+esac
+
+if [[ -z "$SAFE_ID" ]]; then
+  SAFE_ID="$("$PY" - <<'PY' "$TARGET_PHRASE"
+import hashlib, re, sys
+
+phrase = sys.argv[1] if len(sys.argv) > 1 else ""
+trans = {
+  "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"yo","ж":"zh","з":"z","и":"i","й":"y",
+  "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
+  "х":"kh","ц":"ts","ч":"ch","ш":"sh","щ":"shch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+}
+
+out = []
+for ch in phrase.lower():
+  if ch in trans:
+    out.append(trans[ch])
+  elif ch.isalnum():
+    out.append(ch)
+  elif ch.isspace() or ch in "-_":
+    out.append("_")
+  else:
+    out.append("_")
+
+slug = re.sub(r"_+", "_", "".join(out)).strip("_")
+if not slug:
+  h = hashlib.sha1(phrase.encode("utf-8")).hexdigest()[:8]
+  slug = f"wakeword_{h}"
+print(slug)
+PY
+)"
+fi
+
 # ── export for inline python ──────────────────────────────────────────────────
-export TARGET_WORD MAX_TTS_SAMPLES BATCH_SIZE
+export TARGET_PHRASE MAX_TTS_SAMPLES BATCH_SIZE SAFE_ID TARGET_LANG
 
 # ── Ensure at least one model is provided (auto-fetch default if none) ────────
-DEFAULT_MODEL_PT="piper-sample-generator/models/en_US-libritts_r-medium.pt"
 if [[ ${#PIPER_MODELS[@]} -eq 0 ]]; then
-  echo "ℹ️  No --piper-model provided; using default voice:"
-  echo "    $DEFAULT_MODEL_PT"
-  mkdir -p "$(dirname "$DEFAULT_MODEL_PT")"
-  if [[ ! -f "$DEFAULT_MODEL_PT" ]]; then
-    wget -q -O "$DEFAULT_MODEL_PT" \
-      "https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt"
+  if [[ "$TARGET_LANG" == "ru" ]]; then
+    DEFAULT_MODEL_ONNX="piper-sample-generator/models/ru_RU-dmitri-medium.onnx"
+    DEFAULT_MODEL_JSON="piper-sample-generator/models/ru_RU-dmitri-medium.onnx.json"
+    echo "ℹ️  No --piper-model provided; using default RU voice:"
+    echo "    $DEFAULT_MODEL_ONNX"
+    mkdir -p "$(dirname "$DEFAULT_MODEL_ONNX")"
+    if [[ ! -f "$DEFAULT_MODEL_ONNX" ]]; then
+      wget -q -O "$DEFAULT_MODEL_ONNX" \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
+    fi
+    if [[ ! -f "$DEFAULT_MODEL_JSON" ]]; then
+      wget -q -O "$DEFAULT_MODEL_JSON" \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json"
+    fi
+    PIPER_MODELS=("$DEFAULT_MODEL_ONNX")
+  else
+    DEFAULT_MODEL_PT="piper-sample-generator/models/en_US-libritts_r-medium.pt"
+    echo "ℹ️  No --piper-model provided; using default EN voice:"
+    echo "    $DEFAULT_MODEL_PT"
+    mkdir -p "$(dirname "$DEFAULT_MODEL_PT")"
+    if [[ ! -f "$DEFAULT_MODEL_PT" ]]; then
+      wget -q -O "$DEFAULT_MODEL_PT" \
+        "https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt"
+    fi
+    PIPER_MODELS=("$DEFAULT_MODEL_PT")
   fi
-  PIPER_MODELS=("$DEFAULT_MODEL_PT")
 fi
 
 # ── Pass models to Python via env ─────────────────────────────────────────────
@@ -239,7 +321,7 @@ mkdir -p generated_samples
 # ── (B) bulk TTS (skip if enough files present) ──────────────────────────────
 count_existing=$(find generated_samples -name '*.wav' 2>/dev/null | wc -l | tr -d ' ')
 if [[ "${count_existing:-0}" -lt "$MAX_TTS_SAMPLES" ]]; then
-  echo "🎤 Generating ${MAX_TTS_SAMPLES} samples for '${TARGET_WORD}' (batch ${BATCH_SIZE})…"
+  echo "🎤 Generating ${MAX_TTS_SAMPLES} samples for '${TARGET_PHRASE}' (batch ${BATCH_SIZE})…"
   "$PY" - <<'PY'
 import os, sys, shlex, subprocess
 
@@ -247,7 +329,7 @@ import os, sys, shlex, subprocess
 if "piper-sample-generator/" not in sys.path:
     sys.path.append("piper-sample-generator/")
 
-TARGET = os.environ["TARGET_WORD"]
+TARGET = os.environ["TARGET_PHRASE"]
 MAX_SAMPLES = int(os.environ["MAX_TTS_SAMPLES"])
 BATCH = int(os.environ["BATCH_SIZE"])
 OUT_DIR = "generated_samples"
@@ -315,10 +397,14 @@ fi
 import os, re, shutil, json
 from pathlib import Path
 
-target = os.environ.get("TARGET_WORD", "wakeword")
-safe = re.sub(r'[^a-z0-9_]+', '', re.sub(r'\s+', '_', target.lower()))
+target = os.environ.get("TARGET_PHRASE", "wakeword")
+safe = os.environ.get("SAFE_ID") or ""
+if safe:
+    safe = re.sub(r'[^a-z0-9_]+', '', re.sub(r'\s+', '_', safe.lower()))
 if not safe:
-    safe = "wakeword"
+    safe = re.sub(r'[^a-z0-9_]+', '', re.sub(r'\s+', '_', target.lower()))
+    safe = safe or "wakeword"
+lang = os.environ.get("TARGET_LANG", "en")
 
 src = Path("trained_models/wakeword/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite")
 dst = Path(f"{safe}.tflite")
@@ -330,9 +416,9 @@ meta = {
   "type": "micro",
   "wake_word": target,
   "author": "Tater Totterson",
-  "website": "https://github.com/TaterTotterson/microWakeWord-Trainer-AppleSilicon",
+  "website": "https://github.com/skrashevich/microWakeWord-Trainer-AppleSilicon",
   "model": f"{safe}.tflite",
-  "trained_languages": ["en"],
+  "trained_languages": [lang],
   "version": 2,
   "micro": {
     "probability_cutoff": 0.97,

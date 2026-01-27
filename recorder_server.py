@@ -25,10 +25,32 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+_RU_TRANSLIT = {
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"yo","ж":"zh","з":"z","и":"i","й":"y",
+    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
+    "х":"kh","ц":"ts","ч":"ch","ш":"sh","щ":"shch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+}
+
+
+def detect_language(raw: str) -> str:
+    if re.search(r"[А-Яа-яЁё]", raw or ""):
+        return "ru"
+    return "en"
+
+
 def safe_name(raw: str) -> str:
     s = (raw or "").strip().lower()
-    s = re.sub(r"\s+", "_", s)
-    s = re.sub(r"[^a-z0-9_]+", "", s)
+    out = []
+    for ch in s:
+        if ch in _RU_TRANSLIT:
+            out.append(_RU_TRANSLIT[ch])
+        elif ch.isalnum():
+            out.append(ch)
+        elif ch.isspace() or ch in "-_":
+            out.append("_")
+        else:
+            out.append("_")
+    s = re.sub(r"_+", "_", "".join(out))
     s = re.sub(r"^_+|_+$", "", s)
     return s or "wakeword"
 
@@ -37,6 +59,7 @@ def safe_name(raw: str) -> str:
 STATE: Dict[str, Any] = {
     "raw_phrase": None,
     "safe_word": None,
+    "lang": None,
 
     # multi-speaker
     "speakers_total": SPEAKERS_TOTAL_DEFAULT,
@@ -52,6 +75,7 @@ STATE: Dict[str, Any] = {
         "log_lines": [],
         "log_path": None,
         "safe_word": None,
+        "lang": None,
     },
 }
 
@@ -76,14 +100,15 @@ def _append_train_log(line: str):
             del buf[: len(buf) - 250]
 
 
-def _run_training_background(safe_word: str):
-    cmd = ["bash", TRAIN_SCRIPT, safe_word]
+def _run_training_background(safe_word: str, raw_phrase: str, lang: str):
+    cmd = ["bash", TRAIN_SCRIPT, "--phrase", raw_phrase, "--id", safe_word, "--lang", lang]
 
     with STATE_LOCK:
         STATE["training"]["running"] = True
         STATE["training"]["exit_code"] = None
         STATE["training"]["log_lines"] = []
         STATE["training"]["safe_word"] = safe_word
+        STATE["training"]["lang"] = lang
         log_path = str(ROOT_DIR / "recorder_training.log")
         STATE["training"]["log_path"] = log_path
 
@@ -143,6 +168,11 @@ def start_session(payload: Dict[str, Any]):
 
     speakers_total = int(payload.get("speakers_total") or SPEAKERS_TOTAL_DEFAULT)
     takes_per_speaker = int(payload.get("takes_per_speaker") or TAKES_PER_SPEAKER_DEFAULT)
+    lang = (payload.get("lang") or "auto").strip().lower()
+    if lang not in {"auto", "en", "ru"}:
+        return JSONResponse({"ok": False, "error": "lang must be one of: auto, en, ru"}, status_code=400)
+    if lang == "auto":
+        lang = detect_language(raw)
 
     speakers_total = max(1, min(10, speakers_total))
     takes_per_speaker = max(1, min(50, takes_per_speaker))
@@ -150,6 +180,7 @@ def start_session(payload: Dict[str, Any]):
     with STATE_LOCK:
         STATE["raw_phrase"] = raw
         STATE["safe_word"] = safe
+        STATE["lang"] = lang
         STATE["speakers_total"] = speakers_total
         STATE["takes_per_speaker"] = takes_per_speaker
         STATE["takes_received"] = 0
@@ -163,6 +194,7 @@ def start_session(payload: Dict[str, Any]):
         "ok": True,
         "raw_phrase": raw,
         "safe_word": safe,
+        "lang": lang,
         "speakers_total": speakers_total,
         "takes_per_speaker": takes_per_speaker,
         "takes_total": speakers_total * takes_per_speaker,
@@ -176,6 +208,7 @@ def get_session():
             "ok": True,
             "raw_phrase": STATE["raw_phrase"],
             "safe_word": STATE["safe_word"],
+            "lang": STATE.get("lang"),
             "speakers_total": STATE["speakers_total"],
             "takes_per_speaker": STATE["takes_per_speaker"],
             "takes_received": STATE["takes_received"],
@@ -247,7 +280,11 @@ def train_now():
     if not Path(TRAIN_SCRIPT).exists():
         return JSONResponse({"ok": False, "error": f"TRAIN_SCRIPT not found: {TRAIN_SCRIPT}"}, status_code=500)
 
-    t = threading.Thread(target=_run_training_background, args=(safe_word,), daemon=True)
+    with STATE_LOCK:
+        raw_phrase = STATE.get("raw_phrase") or safe_word
+        lang = STATE.get("lang") or detect_language(raw_phrase)
+
+    t = threading.Thread(target=_run_training_background, args=(safe_word, raw_phrase, lang), daemon=True)
     t.start()
 
     return {"ok": True, "started": True, "safe_word": safe_word}

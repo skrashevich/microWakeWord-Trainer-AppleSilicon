@@ -83,14 +83,41 @@ command -v "$PY_BIN" >/dev/null 2>&1 || { echo "❌ python not found: $PY_BIN"; 
 # -------------------- Helpers --------------------
 log() { printf "%s [mw_watcher] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 
+detect_lang() {
+  local phrase="${1:-}"
+  "$PY_BIN" - <<'PY' "$phrase"
+import re, sys
+phrase = sys.argv[1] if len(sys.argv) > 1 else ""
+print("ru" if re.search(r"[А-Яа-яЁё]", phrase) else "en")
+PY
+}
+
 safe_name() {
-  local s="${1:-}"
-  s="$(echo "$s" | tr '[:upper:]' '[:lower:]')"
-  s="$(echo "$s" | sed -E 's/[[:space:]]+/_/g')"
-  s="$(echo "$s" | sed -E 's/[^a-z0-9_]+//g')"
-  s="$(echo "$s" | sed -E 's/^_+|_+$//g')"
-  [[ -n "$s" ]] || s="wakeword"
-  echo "$s"
+  local phrase="${1:-}"
+  "$PY_BIN" - <<'PY' "$phrase"
+import hashlib, re, sys
+phrase = sys.argv[1] if len(sys.argv) > 1 else ""
+trans = {
+  "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"yo","ж":"zh","з":"z","и":"i","й":"y",
+  "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
+  "х":"kh","ц":"ts","ч":"ch","ш":"sh","щ":"shch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+}
+out = []
+for ch in phrase.lower():
+  if ch in trans:
+    out.append(trans[ch])
+  elif ch.isalnum():
+    out.append(ch)
+  elif ch.isspace() or ch in "-_":
+    out.append("_")
+  else:
+    out.append("_")
+slug = re.sub(r"_+", "_", "".join(out)).strip("_")
+if not slug:
+  h = hashlib.sha1(phrase.encode("utf-8")).hexdigest()[:8]
+  slug = f"wakeword_{h}"
+print(slug)
+PY
 }
 
 # Curl wrapper:
@@ -392,7 +419,8 @@ while true; do
     [[ -n "${issue_number:-}" && -n "${raw_phrase:-}" ]] || continue
 
     safe_word="$(safe_name "$raw_phrase")"
-    log "Found request: #${issue_number} phrase='${raw_phrase}' safe='${safe_word}'"
+    lang="$(detect_lang "$raw_phrase")"
+    log "Found request: #${issue_number} phrase='${raw_phrase}' safe='${safe_word}' lang='${lang}'"
 
     if [[ "$MW_DRY_RUN" == "1" ]]; then
       log "DRY_RUN: would label issue, train, publish, comment, close."
@@ -406,10 +434,10 @@ while true; do
       continue
     fi
 
-    # Train: ONLY safe word
-    log "Training: $TRAIN_SCRIPT \"${safe_word}\""
+    # Train: raw phrase + safe id + lang
+    log "Training: $TRAIN_SCRIPT --phrase \"${raw_phrase}\" --id \"${safe_word}\" --lang \"${lang}\""
     set +e
-    ( cd "$ROOT_DIR" && "$TRAIN_SCRIPT" "$safe_word" )
+    ( cd "$ROOT_DIR" && "$TRAIN_SCRIPT" --phrase "$raw_phrase" --id "$safe_word" --lang "$lang" )
     train_rc=$?
     set -e
 

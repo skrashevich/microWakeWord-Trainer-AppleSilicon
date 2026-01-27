@@ -79,6 +79,15 @@
     input[type="text"] { width: 420px; max-width: 100%; }
     input[type="number"] { width: 120px; }
     input::placeholder { color: rgba(233,233,238,0.35); }
+    select {
+      padding: 11px 12px;
+      font-size: 13px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.35);
+      color: var(--text);
+      outline: none;
+    }
 
     button {
       padding: 10px 14px;
@@ -170,6 +179,11 @@
     <div class="card">
       <div class="row">
         <input id="phrase" type="text" placeholder='e.g. "tater totterson"' />
+        <select id="langSelect" title="Language">
+          <option value="auto">Auto</option>
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+        </select>
         <button id="startSessionBtn" class="primary">Start session</button>
         <button id="ttsBtn" disabled>🔊 Test TTS</button>
         <span id="sessionPill" class="pill">No session</span>
@@ -266,6 +280,14 @@
     if (stick) el.scrollTop = el.scrollHeight;
   }
   // --------------------------------------------------------------------------
+
+  function detectLang(phrase) {
+    return /[А-Яа-яЁё]/.test(phrase || "") ? "ru" : "en";
+  }
+  function resolveLang(phrase) {
+    const sel = ($("langSelect").value || "auto").toLowerCase();
+    return sel === "auto" ? detectLang(phrase) : sel;
+  }
 
   let session = null;
   let isRunning = false;
@@ -601,6 +623,8 @@
     const phrase = ($("phrase").value || "").trim();
     if (!phrase) return;
     const u = new SpeechSynthesisUtterance(phrase);
+    const lang = resolveLang(phrase);
+    u.lang = (lang === "ru") ? "ru-RU" : "en-US";
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
   });
@@ -617,7 +641,12 @@
       const data = await api("/api/start_session", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ phrase, speakers_total: speakersTotal, takes_per_speaker: takesPerSpeaker })
+        body: JSON.stringify({
+          phrase,
+          lang: $("langSelect").value,
+          speakers_total: speakersTotal,
+          takes_per_speaker: takesPerSpeaker
+        })
       });
 
       session = data;

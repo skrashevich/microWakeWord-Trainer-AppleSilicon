@@ -23,7 +23,7 @@ https://brew.sh/
 ## **Clone Repo:**
 Clone the repo and enter the folder:
 ```bash
-git clone https://github.com/TaterTotterson/microWakeWord-Trainer-AppleSilicon.git
+git clone https://github.com/skrashevich/microWakeWord-Trainer-AppleSilicon.git
 cd microWakeWord-Trainer-AppleSilicon
 ```
 ---
@@ -126,6 +126,26 @@ personal_samples/
 They are automatically included and weighted higher than TTS samples.
 
 No flags required — the script detects them automatically.
+
+---
+
+## 🇷🇺 Русский язык
+
+Для русских wake word используйте `--lang ru` (или оставьте Auto в Web UI):
+
+```bash
+./train_microwakeword_macos.sh --phrase "привет дом" --lang ru
+```
+
+По умолчанию скрипт скачает русскую TTS‑модель Piper (ru_RU, voice: dmitri).  
+Если хотите другую модель — передайте её явно:
+
+```bash
+./train_microwakeword_macos.sh --phrase "привет дом" --lang ru \
+  --piper-model /path/to/ru_voice.onnx
+```
+
+> Важно: имя файла модели (slug) строится отдельно от фразы, поэтому кириллица в `--phrase` безопасна.
 
 ---
 

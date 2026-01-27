@@ -1,10 +1,30 @@
 # scripts_macos/package_model.py
-import shutil, json, sys, os
+import argparse
+import hashlib
+import json
+import re
+import shutil
 from pathlib import Path
 
-wake = sys.argv[1] if len(sys.argv) > 1 else "hey_norman"
+parser = argparse.ArgumentParser()
+parser.add_argument("phrase", nargs="?", default=None)
+parser.add_argument("--phrase", dest="wake", default="hey_norman")
+parser.add_argument("--lang", default="en", choices=["en", "ru"])
+parser.add_argument("--id", dest="safe_id", default="")
+args = parser.parse_args()
+
+wake = args.phrase or args.wake
+lang = args.lang
+
+if args.safe_id:
+    safe_id = re.sub(r"[^a-z0-9_]+", "", re.sub(r"\s+", "_", args.safe_id.lower()))
+else:
+    safe_id = re.sub(r"[^a-z0-9_]+", "", re.sub(r"\s+", "_", wake.lower()))
+if not safe_id:
+    h = hashlib.sha1(wake.encode("utf-8")).hexdigest()[:8]
+    safe_id = f"wakeword_{h}"
 src = Path("trained_models/wakeword/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite")
-dst = Path("stream_state_internal_quant.tflite")
+dst = Path(f"{safe_id}.tflite")
 if not src.exists():
     raise SystemExit(f"❌ Model not found at {src}")
 
@@ -15,8 +35,8 @@ meta = {
   "wake_word": wake,
   "author": "master phooey",
   "website": "https://github.com/MasterPhooey/MicroWakeWord-Trainer-Docker",
-  "model": "stream_state_internal_quant.tflite",
-  "trained_languages": ["en"],
+  "model": dst.name,
+  "trained_languages": [lang],
   "version": 2,
   "micro": {
     "probability_cutoff": 0.97,
@@ -26,5 +46,5 @@ meta = {
     "minimum_esphome_version": "2024.7.0"
   }
 }
-Path("stream_state_internal_quant.json").write_text(json.dumps(meta, indent=2))
-print("📦 Wrote stream_state_internal_quant.tflite and stream_state_internal_quant.json")
+Path(f"{safe_id}.json").write_text(json.dumps(meta, indent=2))
+print(f"📦 Wrote {dst.name} and {safe_id}.json")
