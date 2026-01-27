@@ -209,7 +209,7 @@ export DATASETS_AUDIO_BACKEND=torch
 # microWakeWord source (editable)
 if [[ ! -d "micro-wake-word" ]]; then
   echo "⬇️ Cloning microWakeWord…"
-  git clone https://github.com/skrashevich/micro-wake-word.git >/dev/null
+  git clone https://github.com/TaterTotterson/micro-wake-word.git >/dev/null
 else
   echo "🔁 Updating microWakeWord…"
   (cd micro-wake-word && git pull --ff-only origin main || true)
