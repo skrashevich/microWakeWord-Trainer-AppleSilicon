@@ -52,6 +52,14 @@ if ! command -v brew &>/dev/null; then
   exit 1
 fi
 
+# Ensure Python 3.11 is present (required for the venv below)
+if ! brew list python@3.11 &>/dev/null; then
+  echo "📦 Installing python@3.11 via Homebrew…"
+  brew install python@3.11
+fi
+
+PYTHON_BIN="${PYTHON_BIN:-$(brew --prefix python@3.11)/bin/python3.11}"
+
 echo "📦 Ensuring ffmpeg@7 + wget are installed (via Homebrew)…"
 
 # wget first
@@ -80,7 +88,6 @@ else
 fi
 
 # ── venv (ARM64 + pinned stack, install once) ────────────────────────────────
-PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3.11}"
 
 TF_VERSION="${TF_VERSION:-2.16.2}"
 TF_METAL_VERSION="${TF_METAL_VERSION:-1.2.0}"
