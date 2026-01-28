@@ -5,52 +5,54 @@
 
 ---
 
-This project lets you **create custom wake words** for Home Assistant Voice using a combination of:
+Этот проект позволяет **создавать пользовательские wake word* для Home Assistant Voice, используя комбинацию:
 
-- **Local voice recordings** (your real voice, optional but recommended)
-- **Automatically generated TTS samples**
-- A **fully automated training pipeline**
+- **Локальных голосовых записей** (ваш настоящий голос, необязательно, но рекомендуется)
+- **Автоматически сгенерированных образцов TTS**
+- **Полностью автоматизированного конвейера обучения**
 
-You can either:
-1. Use the **local Web UI** to record real voice samples and auto-train  
-2. Or run the **training script directly** (TTS-only or with pre-existing samples)
+Вы можете выбрать:
+1. Использовать **локальный Web UI** для записи реальных голосовых образцов и автообучения  
+2. Или запустить **скрипт обучения напрямую** (только TTS или с готовыми образцами)
 
 ---
-> **Note:** The script will automatically install **python3.11**, **ffmpeg** and **wget** via Homebrew
-if they are missing. Homebrew itself must already be installed:
+> **Примечание:** Скрипт автоматически установит **python3.11**, **ffmpeg** и **wget** через Homebrew,
+если они отсутствуют. Сам Homebrew должен быть уже установлен:
 https://brew.sh/
 
-## **Clone Repo:**
-Clone the repo and enter the folder:
+Вам потребуется около 150 Гб свободного места для временных файлов. Весь процесс займет несколько часов на среднестатистичекском MacBook
+
+## **Клонирование репозитория:**
+Клонируйте репозиторий и перейдите в папку:
 ```bash
 git clone https://github.com/skrashevich/microWakeWord-Trainer-AppleSilicon.git
 cd microWakeWord-Trainer-AppleSilicon
 ```
 ---
 
-## 🚀 Option 1: Run the Web UI (Recommended)
+## 🚀 Вариант 1: Запуск Web UI (Рекомендуется)
 
-The Web UI guides users through:
-- Entering a wake word
-- Testing TTS pronunciation
-- Recording real voice samples (auto-start / auto-stop)
-- Supporting **multiple speakers** (family members)
-- Automatically starting training when recordings are complete
+Web UI проводит пользователя через:
+- Ввод ключевого слова
+- Тестирование произношения TTS
+- Запись реальных голосовых образцов (автостарт / автостоп)
+- Поддержку **нескольких говорящих** (членов семьи)
+- Автоматический запуск обучения после завершения записей
 
-### ▶️ Start the Recorder Web UI
+### ▶️ Запуск Web UI для записи
 
-From the project root:
+Из корневой папки проекта:
 
 ```bash
 ./run_recorder_macos.sh
 ```
 
-What this does:
-- Creates and manages `.recorder-venv`
-- Installs all required dependencies (once)
-- Starts a local FastAPI server with the recording UI
+Что это делает:
+- Создает и управляет `.recorder-venv`
+- Устанавливает все необходимые зависимости (один раз)
+- Запускает локальный FastAPI сервер с UI для записи
 
-Then open your browser to:
+Затем откройте браузер по адресу:
 
 ```
 http://127.0.0.1:8789
@@ -58,20 +60,20 @@ http://127.0.0.1:8789
 
 ---
 
-### 🎙️ Recording Flow
+### 🎙️ Процесс записи
 
-1. Enter your wake word
-2. Test pronunciation with **Test TTS**
-3. Choose:
-   - Number of speakers (e.g. family members)
-   - Takes per speaker (default: 10)
-4. Click **Begin recording**
-5. Speak naturally — recording:
-   - Starts when you talk
-   - Stops automatically after silence
-6. Repeat for each speaker
+1. Введите ваше ключевое слово
+2. Протестируйте произношение с помощью **Test TTS**
+3. Выберите:
+   - Количество говорящих (например, членов семьи)
+   - Количество записей на говорящего (по умолчанию: 10)
+4. Нажмите **Begin recording**
+5. Говорите естественно — запись:
+   - Начинается, когда вы говорите
+   - Останавливается автоматически после тишины
+6. Повторите для каждого говорящего
 
-Files are saved automatically to:
+Файлы автоматически сохраняются в:
 
 ```
 personal_samples/
@@ -81,57 +83,57 @@ personal_samples/
   ...
 ```
 
-> ⚠️ The training pipeline automatically detects **any `.wav` files** in
-> `personal_samples/` and gives them extra weight over TTS samples.
+> ⚠️ Конвейер обучения автоматически обнаруживает **любые `.wav` файлы** в
+> `personal_samples/` и придает им больший вес по сравнению с образцами TTS.
 
 ---
 
-### 🧠 Automatic Training
+### 🧠 Автоматическое обучение
 
-Once **all recordings are finished**:
-- The microphone is stopped
-- Training starts automatically
-- Live training logs stream into the Web UI
+После **завершения всех записей**:
+- Микрофон останавливается
+- Обучение запускается автоматически
+- Логи обучения в реальном времени отображаются в Web UI
 
-Reloading the page **does NOT interrupt training** — it continues in the background.
+Перезагрузка страницы **НЕ прерывает обучение** — оно продолжается в фоновом режиме.
 
 ---
 
-## 🧪 Option 2: Run Training Script Only (No Web UI)
+## 🧪 Вариант 2: Запуск только скрипта обучения (без Web UI)
 
-If you don’t want to record real voice samples, or you already have them, you can run training directly.
+Если вы не хотите записывать реальные голосовые образцы или они у вас уже есть, можно запустить обучение напрямую.
 
-### ▶️ Basic Training (TTS-only)
+### ▶️ Базовое обучение (только TTS)
 
 ```bash
 ./train_microwakeword_macos.sh "hey_tater"
 ```
 
-This will:
-- Create/use `.venv`
-- Generate TTS samples
-- Train a wake word model
-- Output the final model file
+Это выполнит:
+- Создание/использование `.venv`
+- Генерацию образцов TTS
+- Обучение модели ключевого слова
+- Вывод финального файла модели
 
 ---
 
-### 🎙️ Training with Personal Voice Samples
+### 🎙️ Обучение с личными голосовыми образцами
 
-If **any `.wav` files exist** in:
+Если **любые `.wav` файлы существуют** в:
 
 ```
 personal_samples/
 ```
 
-They are automatically included and weighted higher than TTS samples.
+Они автоматически включаются и получают больший вес, чем образцы TTS.
 
-No flags required — the script detects them automatically.
+Дополнительные флаги не требуются — скрипт обнаруживает их автоматически.
 
 ---
 
 ## 🇷🇺 Русский язык
 
-Для русских wake word используйте `--lang ru` (или оставьте Auto в Web UI):
+Для русских ключевых слов используйте `--lang ru` (или оставьте Auto в Web UI):
 
 ```bash
 ./train_microwakeword_macos.sh --phrase "привет дом" --lang ru
@@ -149,23 +151,21 @@ No flags required — the script detects them automatically.
 
 ---
 
-## ⚠️ Notes
+## ⚠️ Примечания
 
-- Please use **one wake word per training run**
-- Avoid punctuation or emojis in wake words
-- Training runs **sequentially**
-- Multiple speakers improve real-world detection accuracy
-- Page reloads do **not** interrupt training
+- Используйте **одно ключевое слово на один запуск обучения**
+- Избегайте знаков пунктуации или эмодзи в ключевых словах
+- Обучение выполняется **последовательно**
+- Несколько говорящих улучшают точность распознавания в реальных условиях
+- Перезагрузка страницы **не прерывает** обучение
 
 ---
 
-## 🧩 When to Use Each Mode
+## 🧩 Когда использовать каждый режим
 
-| Use case | Recommended path |
+| Сценарий использования | Рекомендуемый путь |
 |--------|------------------|
-| Best accuracy | Web UI + real voice recordings |
-| Quick testing | Training script only |
-| Family / shared device | Web UI with multiple speakers |
-| Headless / CI | Training script only |
-
----
+| Лучшая точность | Web UI + реальные голосовые записи |
+| Быстрое тестирование | Только скрипт обучения |
+| Семья / общее устройство | Web UI с несколькими говорящими |
+| Headless / CI | Только скрипт обучения |
