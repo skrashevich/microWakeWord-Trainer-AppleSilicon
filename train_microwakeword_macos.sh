@@ -422,7 +422,7 @@ shutil.copy(src, dst)
 meta = {
   "type": "micro",
   "wake_word": target,
-  "author": "Tater Totterson",
+  "author": "microWakeWord-Trainer",
   "website": "https://github.com/skrashevich/microWakeWord-Trainer-AppleSilicon",
   "model": f"{safe}.tflite",
   "trained_languages": [lang],
